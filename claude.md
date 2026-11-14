@@ -189,45 +189,57 @@ admin `user_type` means an extra migration later — seed both
 `user_type` rows in `ms-users` Phase 1, even though ms-security
 doesn't exist yet at that point.
 
-### 6. Testcontainers is currently broken on this dev machine — plan verification around that, don't fight it again
+### 6. Testcontainers works on this machine again (since 2026-11-14) — but make sure the `*IT` tests actually run
 
-Environment: Windows, Docker Desktop 4.73.1 / Engine 29.4.3 / API 1.54
-(built 2026-05). `docker-java` (both the Testcontainers-bundled version
-and an upgraded 1.20.4/docker-java 3.4.0) gets `BadRequestException
-Status 400` with an all-empty `Info` body over both the named pipe and
-plain TCP. The daemon itself is healthy (confirmed via a raw hand-crafted
-HTTP request against the same pipe/port) — this is specifically
-`docker-java`'s HTTP client failing against this Docker Engine build.
-Already ruled out: Avast, Docker Desktop's Resource Saver, named-pipe
-framing. Full detail: see the `ms-users-testcontainers-blocked`
-memory.
+**History:** from Phase 1 until 2026-11 Testcontainers could not run on
+this machine (Windows, Docker Desktop 4.73.1 / Engine 29.4.3 / API 1.54):
+`docker-java` got `BadRequestException Status 400` with an all-empty
+`Info` body over both the named pipe and plain TCP, while the daemon
+itself was healthy. Every phase was therefore verified with a manual
+workaround (`docker run -d postgres:16-alpine` per service + `mvn
+spring-boot:run` + `curl`), which is how every bug in Lessons 1-3 and
+8-10 was found.
+
+**Current state (verified 2026-11-14):** with Testcontainers 1.21.4
+against the same Engine 29.4.3, all three microservices' Testcontainers
+suites (Postgres, and Kafka in `ms-audit`) run and pass locally.
+
+**Second, separate trap found the same day:** until then no module's
+`pom.xml` declared `maven-failsafe-plugin`, so `mvn verify` — locally
+*and* in every GitHub Actions workflow — only ran surefire's `*Test`
+classes and silently skipped every `*IT` class. "CI is green" meant
+nothing for the integration tests. Failsafe (version managed by
+`spring-boot-starter-parent`, goals `integration-test` + `verify`) is now
+declared in `ms-users`, `ms-security` and `ms-audit`.
 
 **Rule going forward:**
-- Still **write** the Testcontainers integration tests per module (they
-  work fine in CI/GitHub Actions and on other machines) — don't skip
-  writing them just because they can't run here.
-- Don't burn time re-diagnosing this on this machine; check once per
-  session whether a newer Testcontainers/docker-java release fixed it,
-  otherwise move on.
-- For manual end-to-end verification on this machine specifically, use
-  the proven workaround: `docker run -d postgres:16-alpine` (plain CLI,
-  which works fine) for each microservice's DB, point the real Spring
-  Boot app at it via env vars (`DB_<SERVICE>_HOST/PORT/NAME/USER/PASSWORD`,
-  `SERVER_PORT`) with `mvn spring-boot:run`, let Flyway apply real
-  migrations, then `curl`/Postman the endpoints directly. This is how
-  every bug in Lessons 1-3 above was actually found and confirmed fixed.
-- Treat "`mvn clean package -DskipTests` succeeds" and "manually verified
-  via the workaround above" as the two checkpoints per phase on this
-  machine — not "`mvn verify` passes," which has never completed here.
-- **Before assuming it's the `docker-java` bug, rule out the simpler
-  failure first:** confirm Docker Desktop is actually running with
-  `docker info`. On this machine it is not left running between
-  sessions, so `docker run` fails with a `dockerDesktopLinuxEngine` named
-  pipe connection error — a different, mundane problem, not the
-  `docker-java`/Testcontainers incompatibility. Launch it with
+- `mvn -B verify` is again the real checkpoint per module on this
+  machine. Check that the output shows **failsafe** running the `*IT`
+  classes (test count per module) — a green build with only surefire's
+  unit tests is not proof of anything.
+- When first running long-dormant `*IT` tests, expect stale ones
+  (assertions that drifted from the code) and these two known pitfalls:
+  - `TestRestTemplate`'s default `HttpURLConnection` factory throws
+    `cannot retry due to server authentication, in streaming mode` on a
+    `401` for a request with a body — set
+    `new JdkClientHttpRequestFactory()` on its `RestTemplate` in the test.
+  - The shared `PostgresTestContainerBase` uses a static `@Container`,
+    which is restarted per test class while Spring caches the
+    application context: two test classes with *identical* context
+    configuration (e.g. two plain `@DataJpaTest`s) make the second one
+    reuse a context pointing at the stopped container's port →
+    "Connection refused". Put such tests in the same class, or switch
+    the base to the singleton-container pattern.
+- Keep the manual end-to-end check (real stack + raw `curl`) for
+  filter-chain wiring — Lessons 8 and 9 were invisible to tests by
+  construction.
+- **Before blaming Testcontainers, rule out the mundane failures first:**
+  Docker Desktop is not left running between sessions here — confirm with
+  `docker info`, and if needed launch
   `"/c/Program Files/Docker/Docker/Docker Desktop.exe"` and poll
-  `docker info` until it succeeds (~1-2 min) before reaching for the
-  workaround below.
+  `docker info` (~1-2 min). And if Maven fails resolving a new plugin or
+  dependency with `PKIX path building failed`, that's Lesson 12 (Avast
+  TLS interception), not a test problem.
 
 ### 7. `AutoConfigureTestDatabase` lives in the `jdbc` package, not `orm.jpa`
 

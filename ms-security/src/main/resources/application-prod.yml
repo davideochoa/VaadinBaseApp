@@ -1,0 +1,8 @@
+# Activated with SPRING_PROFILES_ACTIVE=prod. Only overrides what must differ from development.
+# Swagger UI / OpenAPI docs are disabled in production; SecurityConfig then stops listing
+# /swagger-ui/** and /v3/api-docs/** as public, so those paths fall under authenticated().
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

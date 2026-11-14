@@ -16,6 +16,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.BadJwtException;
@@ -34,6 +35,7 @@ class UserControllerIT extends PostgresTestContainerBase {
             return token -> switch (token) {
                 case "admin-token" -> buildJwt(token, "ADMINISTRATOR");
                 case "user-token" -> buildJwt(token, "USER");
+                case "service-token" -> buildJwt(token, "SERVICE");
                 default -> throw new BadJwtException("Unknown test token");
             };
         }
@@ -60,6 +62,10 @@ class UserControllerIT extends PostgresTestContainerBase {
 
     @BeforeEach
     void setUp() {
+        // The default JDK HttpURLConnection factory throws on a 401 for requests with a body
+        // ("cannot retry due to server authentication, in streaming mode").
+        restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+
         userTypeId = userTypeRepository.findAll().stream()
                 .filter(t -> t.getName().equals("User"))
                 .findFirst()
@@ -146,10 +152,68 @@ class UserControllerIT extends PostgresTestContainerBase {
 
     @Test
     void getNonexistentUserReturns404() {
-        ResponseEntity<String> response = restTemplate.getForEntity("/users/999999", String.class);
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/users/999999", HttpMethod.GET, withToken("user-token"), String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).contains("NOT_FOUND");
+    }
+
+    @Test
+    void listUsersWithoutTokenReturns401() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/users", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).contains("UNAUTHORIZED");
+    }
+
+    @Test
+    void getUserByIdWithoutTokenReturns401() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/users/1", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void listUsersWithNonAdminTokenReturns200AndIncludesSeededAdmin() {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/users?size=100", HttpMethod.GET, withToken("user-token"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("admin@local");
+    }
+
+    @Test
+    void updateWithoutTokenReturns401() {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/users/1", HttpMethod.PUT, new HttpEntity<>(buildValidRequest()), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void deleteWithoutTokenReturns401() {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/users/1", HttpMethod.DELETE, HttpEntity.EMPTY, String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void updateWithNonAdminTokenReturns403() {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/users/1", HttpMethod.PUT, withUserToken(buildValidRequest()), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody()).contains("FORBIDDEN");
+    }
+
+    @Test
+    void deleteWithNonAdminTokenReturns403() {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/users/1", HttpMethod.DELETE, withToken("user-token"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
@@ -169,7 +233,7 @@ class UserControllerIT extends PostgresTestContainerBase {
         restTemplate.exchange("/users", HttpMethod.POST, withAdminToken(request), String.class);
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/users/by-email?email=" + request.getEmail(), HttpMethod.GET, withToken("user-token"), String.class);
+                "/users/by-email?email=" + request.getEmail(), HttpMethod.GET, withToken("service-token"), String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains(request.getEmail());
@@ -184,10 +248,36 @@ class UserControllerIT extends PostgresTestContainerBase {
     }
 
     @Test
-    void listUserTypesIsPublicAndIncludesAdministratorAndUser() {
-        ResponseEntity<String> response = restTemplate.getForEntity("/user-types", String.class);
+    void listUserTypesWithTokenIncludesAdministratorAndUser() {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/user-types", HttpMethod.GET, withToken("user-token"), String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("Administrator").contains("User");
+    }
+
+    @Test
+    void listUserTypesWithServiceTokenReturns200() {
+        // ms-security's UserTypeCache reads /user-types with a SERVICE-role token.
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/user-types", HttpMethod.GET, withToken("service-token"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void listUserTypesWithoutTokenReturns401() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/user-types", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).contains("UNAUTHORIZED");
+    }
+
+    @Test
+    void apiDocsArePublicWithoutProdProfile() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/v3/api-docs", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("\"openapi\"");
     }
 }

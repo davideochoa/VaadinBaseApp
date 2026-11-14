@@ -149,6 +149,20 @@
                     </excludes>
                 </configuration>
             </plugin>
+            <!-- Runs *IT (Testcontainers) tests in the integration-test/verify phases; *Test stays in surefire.
+                 Version and classesDirectory are managed by spring-boot-starter-parent. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

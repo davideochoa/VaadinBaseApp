@@ -48,8 +48,8 @@ public class UserController {
     }
 
     /**
-     * Unlike {@code GET /{id}}/{@code search} (public by design — no sensitive
-     * data), this accepts a bare email as the lookup key, which is exactly the
+     * Unlike {@code GET /{id}}/{@code search} (open to any authenticated
+     * caller), this accepts a bare email as the lookup key, which is exactly the
      * shape of a user-enumeration primitive. Any authenticated caller may look
      * up their own profile this way (app-vaadin's MainLayout does, to render
      * the current user's display name), and ms-security's inter-service
