@@ -38,3 +38,5 @@ replay_pid*
 /.idea/encodings.xml
 /.idea/jarRepositories.xml
 /.idea/VaadinBaseApp.iml
+/app-vaadin/src/main/frontend/generated/
+/app-vaadin-dummy/src/main/frontend/generated/
