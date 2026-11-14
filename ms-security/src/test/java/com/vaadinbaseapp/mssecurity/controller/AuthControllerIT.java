@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +38,10 @@ class AuthControllerIT extends PostgresTestContainerBase {
 
     @BeforeEach
     void setUp() {
+        // The default JDK HttpURLConnection factory throws on a 401 for requests with a body
+        // ("cannot retry due to server authentication, in streaming mode").
+        restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+
         long unique = System.nanoTime();
         email = "jane.doe." + unique + "@example.com";
         username = "jane.doe." + unique;
@@ -172,5 +177,13 @@ class AuthControllerIT extends PostgresTestContainerBase {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("\"keys\"");
+    }
+
+    @Test
+    void apiDocsArePublicWithoutProdProfile() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/v3/api-docs", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("\"openapi\"");
     }
 }

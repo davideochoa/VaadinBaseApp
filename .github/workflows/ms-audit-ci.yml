@@ -38,5 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ms-audit-surefire-reports
-          path: ms-audit/target/surefire-reports
+          path: |
+            ms-audit/target/surefire-reports
+            ms-audit/target/failsafe-reports
           if-no-files-found: ignore

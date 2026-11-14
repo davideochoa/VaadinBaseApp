@@ -77,6 +77,18 @@ class UserRepositoryIT extends PostgresTestContainerBase {
     }
 
     @Test
+    void migrationsSeedActiveAdminProfileWithAdministratorType() {
+        // V6__seed_admin_profile: profile for ms-security's bootstrap account, linked by username.
+        Optional<User> admin = userRepository.findByUsernameIgnoreCase("admin");
+
+        assertThat(admin).isPresent();
+        assertThat(admin.get().getUsername()).isEqualTo("admin");
+        assertThat(admin.get().getEmail()).isEqualTo("admin@local");
+        assertThat(admin.get().isActive()).isTrue();
+        assertThat(admin.get().getUserType().getName()).isEqualTo("Administrator");
+    }
+
+    @Test
     void findByEmailIgnoreCaseIsCaseInsensitiveAndLoadsUserType() {
         Optional<User> found = userRepository.findByEmailIgnoreCase("JANE.DOE@EXAMPLE.COM");
 

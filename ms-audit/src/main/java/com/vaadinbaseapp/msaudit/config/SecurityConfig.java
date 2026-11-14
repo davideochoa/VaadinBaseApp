@@ -27,15 +27,24 @@ public class SecurityConfig {
                                             CorsConfigurationSource corsConfigurationSource,
                                             JwtRoleConverter jwtRoleConverter,
                                             JwtAuthEntryPoint jwtAuthEntryPoint,
-                                            JwtAccessDeniedHandler jwtAccessDeniedHandler) throws Exception {
+                                            JwtAccessDeniedHandler jwtAccessDeniedHandler,
+                                            @Value("${springdoc.api-docs.enabled:true}") boolean apiDocsEnabled)
+            throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/info",
-                                "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .anyRequest().authenticated())
+                .authorizeHttpRequests(auth -> {
+                    // Swagger UI / OpenAPI are public only while springdoc is enabled (dev);
+                    // the "prod" profile disables springdoc, so these paths fall under authenticated().
+                    if (apiDocsEnabled) {
+                        auth.requestMatchers(HttpMethod.GET, "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**")
+                                .permitAll();
+                    }
+                    auth
+                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                        .anyRequest().authenticated();
+                })
                 .exceptionHandling(exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(jwtAuthEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))

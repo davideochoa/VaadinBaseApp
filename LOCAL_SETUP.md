@@ -26,10 +26,31 @@ Once everything is up:
 - `ms-security` Swagger UI: http://localhost:8082/swagger-ui.html
 - `ms-audit` Swagger UI: http://localhost:8083/swagger-ui.html
 
+### Production profile (`prod`) — Swagger disabled
+
+Swagger UI / OpenAPI docs are meant for development only. Each
+microservice (`ms-users`, `ms-security`, `ms-audit`) ships an
+`application-prod.yml` that disables springdoc; with it active,
+`/swagger-ui/**` and `/v3/api-docs/**` are no longer public and answer
+`401` (login, refresh, logout, JWKS, `actuator/health` and `info` stay
+public). Activate it per service with the standard Spring variable:
+
+```bash
+SPRING_PROFILES_ACTIVE=prod        # env var, e.g. in a compose override or the deploy target
+# or, running by hand:
+mvn spring-boot:run -Dspring-boot.run.profiles=prod
+```
+
+It is **not** enabled in `docker-compose.yml` or
+`docker-compose.lowmem.yml` — local development keeps Swagger available.
+Still pending for production: those compose files publish ports
+8081–8083 to the host; a production deployment should not expose the
+microservices directly.
+
 Bootstrap admin login: `admin` / `admin`. This account always has a
 forced password reset on first login — `app-vaadin` won't grant a
 session on that first login and instead prompts for a new password
-(at least 4 characters, different from `admin`) before you can sign in.
+(at least 8 characters, different from `admin`) before you can sign in.
 
 `docker compose down` keeps the Postgres data volumes; add `-v` to wipe
 them and start from a clean seed on the next `up`.

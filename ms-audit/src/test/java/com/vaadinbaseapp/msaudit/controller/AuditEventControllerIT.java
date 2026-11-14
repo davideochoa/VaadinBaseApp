@@ -105,4 +105,12 @@ class AuditEventControllerIT extends FullStackTestContainerBase {
 
         assertThat(response.getBody()).doesNotContainIgnoringCase("password");
     }
+
+    @Test
+    void apiDocsArePublicWithoutProdProfile() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/v3/api-docs", String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("\"openapi\"");
+    }
 }
