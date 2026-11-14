@@ -76,19 +76,53 @@ jobs:
           done
 
       - name: Smoke test - bootstrap admin login + cross-service JWT validation
+        env:
+          # The bootstrap admin is seeded by ms-security's V3__SeedBootstrapAdmin with password
+          # "admin" (BOOTSTRAP_ADMIN_PASSWORD is unset here) and must_reset_password=TRUE, so the
+          # first login only yields a resetToken. This throwaway password lives only in this
+          # ephemeral CI stack (torn down with -v below) and is never echoed.
+          NEW_ADMIN_PASSWORD: CiSmokeTest#2026
         run: |
           set -e
+          # Hide token values when echoing responses.
+          redact() { sed -E 's/"(accessToken|refreshToken|resetToken)":"[^"]+"/"\1":"<redacted>"/g'; }
+
+          # 1. First login with the bootstrap password: expect a forced-reset response with a resetToken.
           response=$(curl -s -X POST http://localhost:8082/login \
             -H "Content-Type: application/json" \
-            -d '{"username":"admin","password":"admin123"}')
-          echo "Login response: $response"
+            -d '{"username":"admin","password":"admin"}')
+          echo "First login response: $(echo "$response" | redact)"
 
-          token=$(echo "$response" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
-          if [ -z "$token" ]; then
-            echo "No access token in login response."
+          reset_token=$(echo "$response" | sed -n 's/.*"resetToken":"\([^"]*\)".*/\1/p')
+          if [ -z "$reset_token" ]; then
+            echo "No resetToken in the first login response: the bootstrap admin should require a forced password reset."
             exit 1
           fi
 
+          # 2. Complete the forced reset: expect 204.
+          status=$(curl -s -o /tmp/reset_response.json -w '%{http_code}' \
+            -X POST http://localhost:8082/login/reset-password \
+            -H "Content-Type: application/json" \
+            -d "{\"resetToken\":\"$reset_token\",\"newPassword\":\"$NEW_ADMIN_PASSWORD\"}")
+          echo "Reset-password status: $status $(cat /tmp/reset_response.json)"
+          if [ "$status" != "204" ]; then
+            echo "Expected 204 from POST /login/reset-password, got $status."
+            exit 1
+          fi
+
+          # 3. Log in again with the new password: expect an accessToken.
+          response=$(curl -s -X POST http://localhost:8082/login \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"admin\",\"password\":\"$NEW_ADMIN_PASSWORD\"}")
+          echo "Second login response: $(echo "$response" | redact)"
+
+          token=$(echo "$response" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+          if [ -z "$token" ]; then
+            echo "No access token in the login response after the password reset."
+            exit 1
+          fi
+
+          # 4. Cross-service JWT validation: ms-security's token must be accepted by ms-users.
           status=$(curl -s -o /tmp/users_response.json -w '%{http_code}' \
             http://localhost:8081/users \
             -H "Authorization: Bearer $token")
@@ -96,6 +130,16 @@ jobs:
 
           if [ "$status" != "200" ]; then
             echo "Expected 200 from GET /users with a bootstrap-admin token, got $status."
+            exit 1
+          fi
+
+          # 5. Authentication is mandatory: the same call without a token must be rejected.
+          status=$(curl -s -o /tmp/users_anon_response.json -w '%{http_code}' \
+            http://localhost:8081/users)
+          echo "GET /users without token response: $status $(cat /tmp/users_anon_response.json)"
+
+          if [ "$status" != "401" ]; then
+            echo "Expected 401 from GET /users without a token, got $status."
             exit 1
           fi
 

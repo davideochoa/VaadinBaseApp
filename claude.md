@@ -852,8 +852,12 @@ three microservices up via `mvn spring-boot:run`
 `DB_AUDIT_PORT=5435 SERVER_PORT=8083 KAFKA_BOOTSTRAP_SERVERS=localhost:9092`)
 — health and JWKS (`http://localhost:8082/.well-known/jwks.json`) all
 confirmed reachable. Bootstrap admin for the golden path:
-`admin@local` / `admin123` (no `BOOTSTRAP_ADMIN_PASSWORD` env var was
-set, so `V3__SeedBootstrapAdmin`'s insecure local-dev default applied).
+username `admin` / password `admin` (no `BOOTSTRAP_ADMIN_PASSWORD` env var
+was set, so `V3__SeedBootstrapAdmin`'s insecure local-dev default applied;
+the account is seeded with `must_reset_password=TRUE`, so the first login
+only returns a `resetToken` and forces a password change). *Corrected*
+*2026-11-14: earlier revisions of this log said `admin@local`/`admin123`,*
+*which is not what the seed creates.*
 
 **`app-vaadin` itself never rendered a single page this session** — every
 request 500'd (`Whitelabel Error Page`) before any golden-path step
@@ -938,7 +942,8 @@ request this time — no 500, no license error.
 
 Full `claude-in-chrome`-driven golden path, all passing:
 - Unauthenticated `/` → `LoginView` redirect.
-- Bootstrap-admin (`admin@local`/`admin123`) login → `UserListView`,
+- Bootstrap-admin (`admin` / `admin`, forced password change on first
+  login) login → `UserListView`,
   both nav items visible (admin RBAC).
 - Full CRUD: create (successful + 409 duplicate-email → form-level
   banner "The resource already exists or violates a data constraint",
@@ -1017,7 +1022,8 @@ disposable run over anything Testcontainers-shaped on this machine:
 - `ms-users`, `ms-security`, `ms-audit`, all 3 Postgres containers, and
   Kafka all reached healthy/running state.
 - End-to-end smoke test across the real Docker network: bootstrap-admin
-  login against `ms-security` (`admin@local`/`admin123`) issued a valid
+  login against `ms-security` (`admin` / `admin`, then the forced
+  password change on first login) issued a valid
   RS256 access token; that same token, presented to `ms-users`'
   `GET /users`, returned `200` with the `ADMINISTRATOR` role correctly
   authorized — confirming the cross-service JWT/JWKS trust boundary

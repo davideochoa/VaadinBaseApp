@@ -50,7 +50,7 @@ microservices directly.
 Bootstrap admin login: `admin` / `admin`. This account always has a
 forced password reset on first login — `app-vaadin` won't grant a
 session on that first login and instead prompts for a new password
-(at least 4 characters, different from `admin`) before you can sign in.
+(at least 8 characters, different from `admin`) before you can sign in.
 
 `docker compose down` keeps the Postgres data volumes; add `-v` to wipe
 them and start from a clean seed on the next `up`.
